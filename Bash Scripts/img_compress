@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Exit on error and ensure the script exits if a command in a pipeline fails
+set -e
+set -o pipefail
+
+usage() {
+  echo "Usage: $0 <file or directory> [...]" >&2
+}
+
+# Check if at least one argument is provided
+if [ -z "$1" ]; then
+  usage
+  exit 1
+fi
+
+if [ "$1" == ".." ]; then
+  echo "Error: '..' is not a valid argument." >&2
+  exit 1
+fi
+
+target_path="$1"
+target_file=""
+output_file=""
+
+current_dir=$(realpath .)
+
+# Handle . as a special case
+if [ "$1" == "." ]; then
+  parent_dir=$(dirname "$current_dir")
+  current_dir_name=$(basename "$current_dir")
+  output_file="${parent_dir}/${current_dir_name}.tar.xz"
+  target_dir="$current_dir"
+elif [ -d "$target_path" ]; then
+  dir_name=$(basename "$target_path")
+  output_file="${current_dir}/$(basename "$dir_name").tar.xz"
+  target_dir="$target_path"
+elif [ -f "$target_path" ]; then
+  target_file=$(basename "$target_path")
+  output_file="${current_dir}/$(basename "$target_file").tar.xz"
+  target_dir=$(dirname "$target_path")
+else
+  echo "The specified path does not exist: $target_path" >&2
+  exit 1
+fi
+
+pushd "$target_dir" > /dev/null
+
+tar cf - "${target_file:-.}" \
+  | pv -s $(du -sb "${target_file:-.}" | awk '{print $1}') \
+  | xz -9e > "$output_file"
+
+popd > /dev/null
+
+# Recursively call the script with the rest of the arguments if present
+shift
+if [ "$#" -gt 0 ]; then
+  "$0" "$@"
+fi
+
