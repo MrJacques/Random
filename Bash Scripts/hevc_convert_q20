@@ -1,0 +1,24 @@
+#!/bin/bash
+
+export TARGET_QUALITY=20
+export PRESET="slow"
+
+unset TARGET_SIZE_GB
+export TWO_PASS=false
+
+# Run locally
+#FFMPEG_CMD="ffmpeg"
+#FFMPEG_ENC="$FFMPEG_CMD -y -hwaccel auto -i \"\$input\" -c:v hevc -preset \"$PRESET\" -global_quality $TARGET_QUALITY -c:a copy  \"\$output\""
+
+# Run in docker linuxserver/ffmpeg
+unset FFPROBE_DURATION
+
+FFMPEG_CMD="docker run --rm -it --device=/dev/dri:/dev/dri -v \"\$filepath\":/config linuxserver/ffmpeg"
+export FFMPEG_PASS_1="$FFMPEG_CMD -stats -err_detect ignore_err  -loglevel warning -y -i \"/config/\$input_base\" -c:v hevc_qsv -preset \"$PRESET\" -global_quality $TARGET_QUALITY -c:a copy \"/config/\$output_base\""
+unset FFMPEG_PASS_2
+
+# Determine the directory where this script resides
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+# Call the main script with all passed arguments
+"$SCRIPT_DIR/hevc_convert_base" "$@"

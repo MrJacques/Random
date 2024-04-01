@@ -1,0 +1,26 @@
+#!/bin/bash
+
+export TARGET_SIZE_GB=3
+export PRESET="slow"
+export TWO_PASS=true
+
+# Run locally
+#FFPROBE_CMD="ffprobe"
+#export FFPROBE_DURATION="$FFPROBE_CMD -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"\$input\""
+#FFMPEG_CMD="ffmpeg"
+#export FFMPEG_PASS_1="$FFMPEG_CMD -loglevel warning -y -hwaccel auto -i \"\$input\" -c:v hevc -preset \"$PRESET\" -b:v \${video_bitrate_kbps}k -pass 1 -an -f null /dev/null"
+#export FFMPEG_PASS_2="$FFMPEG_CMD -loglevel warning -y -hwaccel auto -i \"\$input\" -c:v hevc -preset \"$PRESET\" -b:v \${video_bitrate_kbps}k -pass 2 -c:a copy \"\$output\""
+
+# Run in docker linuxserver/ffmpeg
+FFPROBE_CMD="docker run --rm -v \"\$filepath:/config\" --entrypoint ffprobe linuxserver/ffmpeg"
+export FFPROBE_DURATION_CMD="$FFPROBE_CMD -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"/config/\$input_base\""
+
+FFMPEG_CMD="docker run --rm -it --device=/dev/dri:/dev/dri -v \"\$filepath\":/config linuxserver/ffmpeg"
+export FFMPEG_PASS_1="$FFMPEG_CMD -stats -err_detect ignore_err  -loglevel warning -y -i \"/config/\$input_base\" -c:v hevc_qsv -preset \"$PRESET\" -b:v \${video_bitrate_kbps}k -pass 1 -passlogfile \"/config/\$log_base\" -an -f null /dev/null"
+export FFMPEG_PASS_2="$FFMPEG_CMD -stats -err_detect ignore_err  -loglevel warning -y -i \"/config/\$input_base\" -c:v hevc_qsv -preset \"$PRESET\" -b:v \${video_bitrate_kbps}k -pass 2 -passlogfile \"/config/\$log_base\" -c:a copy \"/config/\$output_base\""
+
+# Determine the directory where this script resides
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+# Call the main script with all passed arguments
+"$SCRIPT_DIR/hevc_convert_base" "$@"

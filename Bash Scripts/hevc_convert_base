@@ -1,0 +1,146 @@
+#!/bin/bash
+
+if [ -z "$FFMPEG_PASS_1" ]; then
+    echo "FFMPEG_PASS_1 is not set. Don't call this script directly."
+    exit 1
+fi
+
+# Check for input argument
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <filename>"
+    exit 2
+fi
+
+# Check if more than one argument is passed
+if [ $# -gt 1 ]; then
+    # If so, iterate over each argument
+    for arg in "$@"; do
+        # Recursively call the script for each argument
+        "$0" "$arg"
+    done
+    exit 0
+fi
+
+# Single argument logic from this point
+arg=$1
+
+# Check if the argument is a directory
+if [ -d "$arg" ]; then
+    # If so, iterate over each item in the directory
+    for item in "$arg"/*; do
+        # Recursively call the script for each item
+        "$0" "$item"
+    done
+    exit 0
+fi
+
+safe_basename() {
+    local base_name
+    base_name=$(basename "$1")
+
+    if [[ $? -ne 0 ]]; then
+        echo Error executing basename "$1" >&2
+        exit 10
+    else
+        echo "$base_name"
+    fi
+}
+
+# arg should be a file
+
+input="$arg"
+
+input_base=$(safe_basename "$input")
+if [[ "$input" == */* ]]; then
+  input_no_ext="${input%/*}/${input_base%.*}"
+else
+  input_no_ext="${input%.*}"
+fi
+
+output="${input_no_ext}-hevc.mkv"
+output_base=$(safe_basename "$output")
+
+log_name="${input_no_ext}"
+log_base=$(safe_basename "$log_name")
+
+filepath="${input%/*}"
+# Check if the input contained a path
+if [ "$filepath" = "$input" ]; then
+    filepath="$PWD"
+fi
+filepath=$(realpath "$filepath")
+if [[ $? -ne 0 ]]; then
+    echo Error executing realpath "$filepath" >&2
+    exit 11
+fi
+
+echo Input: $input
+echo Path: $filepath
+# Check if output file exists
+if [ -f "$output" ]; then
+    echo "$output already exists. Exiting."
+    exit 3
+fi
+
+# Check if input file exists
+if [ ! -f "$input" ]; then
+    echo "Input file $input does not exist. Exiting."
+    exit 4
+fi
+
+echo "Encoding started: $input"
+
+if [ -n "$TARGET_SIZE_GB" ]; then
+	# Calculate video duration in seconds
+	echo ffprobe command: $(eval "echo $FFPROBE_DURATION_CMD")
+	duration_output=$(eval "$FFPROBE_DURATION_CMD" )
+
+
+	if [ $? -ne 0 ]; then
+	    echo "Error running ffprobe."
+	    exit 5
+	fi
+
+	duration=${duration_output%.*} # Convert to integer
+	if ! [[ "$duration" =~ ^[0-9]+$ ]] || (( duration < 1 )); then
+	    echo "Error: Duration is not a valid number greater than or equal to 1." >&2
+	    exit 14
+	fi
+	#echo Duration: $duration
+
+	# Calculate target total size in bits
+	# 8 * 2^30 is more understandable than 2^33
+	target_total_bits=$(echo "$TARGET_SIZE_GB * 8 * 2^30" | bc)
+        if [ $? -ne 0 ]; then
+            echo "Error running bc."
+            exit 12
+        fi
+
+	# Assuming audio and overhead takes approximately 10%, calculate video bitrate
+	video_bitrate=$(( (target_total_bits * 9 / 10) / duration ))  # in bits per second
+
+	# Convert video bitrate to kbits/s for ffmpeg
+	video_bitrate_kbps=$((video_bitrate / 1000))
+fi
+
+if [ -n "$FFMPEG_PASS_1" ]; then
+	echo command pass 1: $FFMPEG_PASS_1
+	eval "$FFMPEG_PASS_1"
+
+	if [ $? -ne 0 ]; then
+	    echo "Error running ffmpeg pass 1."
+	    exit 6
+	fi
+fi
+
+if [ -n "$FFMPEG_PASS_2" ]; then
+	echo command pass 2: $FFMPEG_PASS_2
+	eval "$FFMPEG_PASS_2"
+
+	if [ $? -ne 0 ]; then
+	    echo "Error running ffmpeg pass 2."
+	    exit 7
+	fi
+fi
+
+echo "Encoding completed: $output"
